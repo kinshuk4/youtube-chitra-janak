@@ -1,0 +1,23 @@
+{
+  "name": "youtube-chitra-janak",
+  "version": "1.0.0",
+  "description": "YouTube Thumbnail Generator with Visual Editor",
+  "type": "module",
+  "main": "src/index.js",
+  "bin": {
+    "chitra": "./src/cli.js"
+  },
+  "scripts": {
+    "start": "node src/index.js",
+    "editor": "node src/index.js --editor",
+    "generate": "node src/index.js --template",
+    "dev": "node --watch src/index.js --editor"
+  },
+  "keywords": ["youtube", "thumbnail", "generator"],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "express": "^5.2.1",
+    "playwright": "^1.57.0"
+  }
+}

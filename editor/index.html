@@ -338,10 +338,23 @@
     <!-- Sidebar -->
     <div class="sidebar">
         <div>
-            <h2>Add Elements</h2>
-            <button class="btn btn-secondary element-btn" onclick="addText()">
-                <span>T</span> Text
+            <h2>Add Text</h2>
+            <button class="btn btn-secondary element-btn" onclick="addText('title')">
+                <span style="font-size:18px;font-weight:900;">T</span> Title
             </button>
+            <button class="btn btn-secondary element-btn" onclick="addText('subtitle')">
+                <span style="font-size:14px;font-weight:600;">T</span> Subtitle
+            </button>
+            <button class="btn btn-secondary element-btn" onclick="addText('heading')">
+                <span style="font-size:16px;font-weight:700;">T</span> Heading
+            </button>
+            <button class="btn btn-secondary element-btn" onclick="addText('body')">
+                <span style="font-size:12px;">T</span> Body
+            </button>
+        </div>
+
+        <div>
+            <h2>Add Elements</h2>
             <button class="btn btn-secondary element-btn" onclick="showAssetPicker()">
                 <span>🖼</span> Image
             </button>
@@ -476,21 +489,32 @@
             });
         }
 
+        // Text presets
+        const TEXT_PRESETS = {
+            'title': { fontSize: 72, fontWeight: 900, label: 'Title (72px)' },
+            'subtitle': { fontSize: 36, fontWeight: 600, label: 'Subtitle (36px)' },
+            'heading': { fontSize: 48, fontWeight: 700, label: 'Heading (48px)' },
+            'body': { fontSize: 24, fontWeight: 400, label: 'Body (24px)' },
+            'caption': { fontSize: 18, fontWeight: 400, label: 'Caption (18px)' }
+        };
+
         // Add elements
-        function addText() {
+        function addText(preset = 'heading') {
             const id = `element-${++elementCounter}`;
+            const presetConfig = TEXT_PRESETS[preset] || TEXT_PRESETS.heading;
             const element = {
                 id,
                 type: 'text',
                 x: 100,
                 y: 100,
-                width: 400,
-                height: 80,
+                width: 600,
+                height: presetConfig.fontSize + 40,
                 content: 'Double-click to edit',
-                fontSize: 48,
-                fontWeight: 700,
+                fontSize: presetConfig.fontSize,
+                fontWeight: presetConfig.fontWeight,
                 color: '#ffffff',
-                fontFamily: 'Inter'
+                fontFamily: 'Inter',
+                textAlign: 'center'
             };
             elements.push(element);
             renderElement(element);
@@ -578,7 +602,8 @@
             div.style.height = el.height + 'px';
 
             if (el.type === 'text') {
-                div.className = 'element element-text';
+                const align = el.textAlign || 'left';
+                div.className = `element element-text align-${align}`;
                 div.style.fontSize = el.fontSize + 'px';
                 div.style.fontWeight = el.fontWeight;
                 div.style.color = el.color;
@@ -774,11 +799,34 @@
             `;
 
             if (el.type === 'text') {
+                const align = el.textAlign || 'left';
                 html += `
                     <label>Text</label>
                     <input type="text" value="${el.content}" onchange="updateProp('${el.id}', 'content', this.value)">
+
+                    <label>Size Preset</label>
+                    <select onchange="applyTextPreset('${el.id}', this.value)">
+                        <option value="">Custom</option>
+                        <option value="title">Title (72px)</option>
+                        <option value="subtitle">Subtitle (36px)</option>
+                        <option value="heading">Heading (48px)</option>
+                        <option value="body">Body (24px)</option>
+                        <option value="caption">Caption (18px)</option>
+                    </select>
+
                     <label>Font Size</label>
                     <input type="number" value="${el.fontSize}" onchange="updateProp('${el.id}', 'fontSize', this.value)">
+
+                    <label>Text Align</label>
+                    <div class="prop-row" style="gap: 5px;">
+                        <button class="btn ${align === 'left' ? 'btn-primary' : 'btn-secondary'}"
+                            onclick="updateProp('${el.id}', 'textAlign', 'left')" style="flex:1;">Left</button>
+                        <button class="btn ${align === 'center' ? 'btn-primary' : 'btn-secondary'}"
+                            onclick="updateProp('${el.id}', 'textAlign', 'center')" style="flex:1;">Center</button>
+                        <button class="btn ${align === 'right' ? 'btn-primary' : 'btn-secondary'}"
+                            onclick="updateProp('${el.id}', 'textAlign', 'right')" style="flex:1;">Right</button>
+                    </div>
+
                     <label>Font Weight</label>
                     <select onchange="updateProp('${el.id}', 'fontWeight', this.value)">
                         <option value="400" ${el.fontWeight == 400 ? 'selected' : ''}>Normal</option>
@@ -814,6 +862,22 @@
                 el[prop] = value;
             }
             renderElement(el);
+            // Refresh properties panel to update button states
+            if (prop === 'textAlign') {
+                showProperties(el);
+            }
+        }
+
+        function applyTextPreset(id, preset) {
+            if (!preset) return;
+            const el = elements.find(e => e.id === id);
+            if (!el || !TEXT_PRESETS[preset]) return;
+
+            el.fontSize = TEXT_PRESETS[preset].fontSize;
+            el.fontWeight = TEXT_PRESETS[preset].fontWeight;
+            el.height = el.fontSize + 40;
+            renderElement(el);
+            showProperties(el);
         }
 
         function deleteSelected() {
@@ -900,68 +964,95 @@
             };
         }
 
-        function saveTemplate() {
+        async function saveTemplate() {
             const name = document.getElementById('templateName').value.trim();
             if (!name) {
                 alert('Please enter a template name');
                 return;
             }
 
-            const templates = JSON.parse(localStorage.getItem('templates') || '{}');
-            templates[name] = getTemplateData();
-            localStorage.setItem('templates', JSON.stringify(templates));
-            document.getElementById('templateName').value = '';
-            loadTemplates();
-            alert(`Template "${name}" saved!`);
+            try {
+                const response = await fetch(`/api/templates/${encodeURIComponent(name)}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(getTemplateData())
+                });
+
+                if (response.ok) {
+                    document.getElementById('templateName').value = '';
+                    loadTemplates();
+                    alert(`Template "${name}" saved to templates/${name}.json`);
+                } else {
+                    alert('Failed to save template');
+                }
+            } catch (e) {
+                alert('Error saving template: ' + e.message);
+            }
         }
 
-        function loadTemplates() {
-            const templates = JSON.parse(localStorage.getItem('templates') || '{}');
+        async function loadTemplates() {
             const container = document.getElementById('templatesList');
-            container.innerHTML = '';
+            container.innerHTML = '<div style="color: #666; font-size: 12px;">Loading...</div>';
 
-            Object.keys(templates).forEach(name => {
-                const div = document.createElement('div');
-                div.className = 'template-item';
-                div.innerHTML = `
-                    <span>${name}</span>
-                    <div>
-                        <button class="btn btn-secondary" onclick="applyTemplate('${name}')">Load</button>
-                        <button class="btn btn-danger" onclick="deleteTemplate('${name}')" style="margin-left: 5px;">×</button>
-                    </div>
-                `;
-                container.appendChild(div);
-            });
-        }
+            try {
+                const response = await fetch('/api/templates');
+                const templates = await response.json();
 
-        function applyTemplate(name) {
-            const templates = JSON.parse(localStorage.getItem('templates') || '{}');
-            const template = templates[name];
-            if (!template) return;
+                container.innerHTML = '';
 
-            clearCanvasQuiet();
-
-            document.getElementById('canvasWidth').value = template.canvas.width;
-            document.getElementById('canvasHeight').value = template.canvas.height;
-            document.getElementById('canvasBg').value = template.canvas.background;
-            resizeCanvas();
-            updateCanvasBg();
-
-            template.elements.forEach(el => {
-                const id = `element-${++elementCounter}`;
-                const element = { ...el, id };
-
-                // Resolve asset path to URL
-                if (element.type === 'image' && element.assetPath) {
-                    element.src = `/assets/${element.assetPath}`;
-                } else if (element.type === 'image' && !element.src.startsWith('data:') && !element.src.startsWith('/')) {
-                    element.src = `/assets/${element.src}`;
+                if (templates.length === 0) {
+                    container.innerHTML = '<div style="color: #666; font-size: 12px;">No templates yet</div>';
+                    return;
                 }
 
-                elements.push(element);
-                renderElement(element);
-            });
-            updateLayers();
+                templates.forEach(name => {
+                    const div = document.createElement('div');
+                    div.className = 'template-item';
+                    div.innerHTML = `
+                        <span>${name}</span>
+                        <div>
+                            <button class="btn btn-secondary" onclick="applyTemplate('${name}')">Load</button>
+                            <button class="btn btn-danger" onclick="deleteTemplate('${name}')" style="margin-left: 5px;">×</button>
+                        </div>
+                    `;
+                    container.appendChild(div);
+                });
+            } catch (e) {
+                container.innerHTML = '<div style="color: #f66; font-size: 12px;">Error loading templates</div>';
+            }
+        }
+
+        async function applyTemplate(name) {
+            try {
+                const response = await fetch(`/api/templates/${encodeURIComponent(name)}`);
+                const template = await response.json();
+
+                clearCanvasQuiet();
+
+                document.getElementById('canvasWidth').value = template.canvas.width;
+                document.getElementById('canvasHeight').value = template.canvas.height;
+                document.getElementById('canvasBg').value = template.canvas.background;
+                resizeCanvas();
+                updateCanvasBg();
+
+                template.elements.forEach(el => {
+                    const id = `element-${++elementCounter}`;
+                    const element = { ...el, id };
+
+                    // Resolve asset path to URL
+                    if (element.type === 'image' && element.assetPath) {
+                        element.src = `/assets/${element.assetPath}`;
+                    } else if (element.type === 'image' && element.src && !element.src.startsWith('data:') && !element.src.startsWith('/')) {
+                        element.src = `/assets/${element.src}`;
+                    }
+
+                    elements.push(element);
+                    renderElement(element);
+                });
+                updateLayers();
+            } catch (e) {
+                alert('Error loading template: ' + e.message);
+            }
         }
 
         function clearCanvasQuiet() {
@@ -973,12 +1064,15 @@
             selectedElement = null;
         }
 
-        function deleteTemplate(name) {
+        async function deleteTemplate(name) {
             if (!confirm(`Delete template "${name}"?`)) return;
-            const templates = JSON.parse(localStorage.getItem('templates') || '{}');
-            delete templates[name];
-            localStorage.setItem('templates', JSON.stringify(templates));
-            loadTemplates();
+
+            try {
+                await fetch(`/api/templates/${encodeURIComponent(name)}`, { method: 'DELETE' });
+                loadTemplates();
+            } catch (e) {
+                alert('Error deleting template: ' + e.message);
+            }
         }
 
         function exportTemplate() {
