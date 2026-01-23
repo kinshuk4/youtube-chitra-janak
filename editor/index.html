@@ -1,0 +1,1060 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Thumbnail Editor</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #1a1a2e;
+            color: #fff;
+            min-height: 100vh;
+            display: flex;
+        }
+
+        /* Sidebar */
+        .sidebar {
+            width: 280px;
+            background: #16213e;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+            overflow-y: auto;
+            max-height: 100vh;
+        }
+
+        .sidebar h2 {
+            font-size: 14px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: #888;
+            margin-bottom: 5px;
+        }
+
+        .btn {
+            padding: 10px 15px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 600;
+            transition: all 0.2s;
+        }
+
+        .btn-primary {
+            background: #4ecca3;
+            color: #1a1a2e;
+        }
+
+        .btn-primary:hover {
+            background: #3db892;
+        }
+
+        .btn-secondary {
+            background: #2d3a5a;
+            color: #fff;
+        }
+
+        .btn-secondary:hover {
+            background: #3d4a6a;
+        }
+
+        .btn-danger {
+            background: #e74c3c;
+            color: #fff;
+        }
+
+        .element-btn {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            width: 100%;
+            text-align: left;
+        }
+
+        .element-btn span {
+            font-size: 18px;
+        }
+
+        /* Properties panel */
+        .properties {
+            background: #1a1a2e;
+            border-radius: 8px;
+            padding: 15px;
+        }
+
+        .properties label {
+            display: block;
+            font-size: 12px;
+            color: #888;
+            margin-bottom: 5px;
+        }
+
+        .properties input, .properties select {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #2d3a5a;
+            border-radius: 6px;
+            background: #16213e;
+            color: #fff;
+            margin-bottom: 10px;
+        }
+
+        .properties input[type="color"] {
+            height: 40px;
+            padding: 5px;
+        }
+
+        .prop-row {
+            display: flex;
+            gap: 10px;
+        }
+
+        .prop-row > div {
+            flex: 1;
+        }
+
+        /* Main canvas area */
+        .main {
+            flex: 1;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            overflow: auto;
+        }
+
+        .toolbar {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+
+        .canvas-container {
+            position: relative;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+        }
+
+        #canvas {
+            background: #1a1a2e;
+            position: relative;
+            overflow: hidden;
+        }
+
+        /* Draggable elements */
+        .element {
+            position: absolute;
+            cursor: move;
+            user-select: none;
+        }
+
+        .element.selected {
+            outline: 2px solid #4ecca3;
+            outline-offset: 2px;
+        }
+
+        .element.selected::after {
+            content: '';
+            position: absolute;
+            top: -6px;
+            left: -6px;
+            right: -6px;
+            bottom: -6px;
+            border: 1px dashed #4ecca3;
+            pointer-events: none;
+        }
+
+        /* Resize handles */
+        .resize-handle {
+            position: absolute;
+            width: 10px;
+            height: 10px;
+            background: #4ecca3;
+            border: 2px solid #1a1a2e;
+            border-radius: 2px;
+        }
+
+        .resize-handle.nw { top: -5px; left: -5px; cursor: nw-resize; }
+        .resize-handle.ne { top: -5px; right: -5px; cursor: ne-resize; }
+        .resize-handle.sw { bottom: -5px; left: -5px; cursor: sw-resize; }
+        .resize-handle.se { bottom: -5px; right: -5px; cursor: se-resize; }
+
+        /* Element types */
+        .element-text {
+            font-family: 'Inter', sans-serif;
+            white-space: pre-wrap;
+            word-break: break-word;
+            display: flex;
+            align-items: center;
+        }
+
+        .element-text.align-left { justify-content: flex-start; text-align: left; }
+        .element-text.align-center { justify-content: center; text-align: center; }
+        .element-text.align-right { justify-content: flex-end; text-align: right; }
+
+        .element-image img {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+        }
+
+        .element-shape {
+            background: #4ecca3;
+        }
+
+        .element-shape.circle {
+            border-radius: 50%;
+        }
+
+        /* Asset picker modal */
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0,0,0,0.8);
+            z-index: 1000;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .modal.active {
+            display: flex;
+        }
+
+        .modal-content {
+            background: #16213e;
+            padding: 30px;
+            border-radius: 12px;
+            max-width: 600px;
+            max-height: 80vh;
+            overflow-y: auto;
+        }
+
+        .modal h3 {
+            margin-bottom: 20px;
+        }
+
+        .asset-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 10px;
+        }
+
+        .asset-item {
+            aspect-ratio: 1;
+            background: #1a1a2e;
+            border-radius: 8px;
+            padding: 10px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s;
+        }
+
+        .asset-item:hover {
+            background: #2d3a5a;
+        }
+
+        .asset-item img {
+            max-width: 100%;
+            max-height: 100%;
+            object-fit: contain;
+        }
+
+        .asset-item .placeholder {
+            color: #666;
+            font-size: 12px;
+            text-align: center;
+        }
+
+        /* Templates list */
+        .template-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px;
+            background: #1a1a2e;
+            border-radius: 6px;
+            margin-bottom: 8px;
+        }
+
+        .template-item button {
+            padding: 5px 10px;
+            font-size: 12px;
+        }
+
+        /* Layer list */
+        .layer-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 8px;
+            background: #1a1a2e;
+            border-radius: 6px;
+            margin-bottom: 5px;
+            cursor: pointer;
+        }
+
+        .layer-item:hover {
+            background: #2d3a5a;
+        }
+
+        .layer-item.selected {
+            background: #4ecca3;
+            color: #1a1a2e;
+        }
+
+        .layer-icon {
+            font-size: 14px;
+        }
+
+        .layer-name {
+            flex: 1;
+            font-size: 13px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .hidden {
+            display: none !important;
+        }
+    </style>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+</head>
+<body>
+    <!-- Sidebar -->
+    <div class="sidebar">
+        <div>
+            <h2>Add Elements</h2>
+            <button class="btn btn-secondary element-btn" onclick="addText()">
+                <span>T</span> Text
+            </button>
+            <button class="btn btn-secondary element-btn" onclick="showAssetPicker()">
+                <span>🖼</span> Image
+            </button>
+            <button class="btn btn-secondary element-btn" onclick="addShape('rect')">
+                <span>▢</span> Rectangle
+            </button>
+            <button class="btn btn-secondary element-btn" onclick="addShape('circle')">
+                <span>●</span> Circle
+            </button>
+        </div>
+
+        <div>
+            <h2>Layers</h2>
+            <div id="layers"></div>
+        </div>
+
+        <div id="propertiesPanel" class="properties hidden">
+            <h2>Properties</h2>
+            <div id="propertiesContent"></div>
+            <button class="btn btn-danger" onclick="deleteSelected()" style="margin-top: 10px; width: 100%;">
+                Delete Element
+            </button>
+        </div>
+
+        <div>
+            <h2>Canvas</h2>
+            <div class="prop-row">
+                <div>
+                    <label>Width</label>
+                    <input type="number" id="canvasWidth" value="1280" onchange="resizeCanvas()">
+                </div>
+                <div>
+                    <label>Height</label>
+                    <input type="number" id="canvasHeight" value="720" onchange="resizeCanvas()">
+                </div>
+            </div>
+            <label>Background</label>
+            <input type="color" id="canvasBg" value="#1a1a2e" onchange="updateCanvasBg()">
+        </div>
+
+        <div>
+            <h2>Templates</h2>
+            <input type="text" id="templateName" placeholder="Template name...">
+            <button class="btn btn-primary" onclick="saveTemplate()" style="width: 100%; margin-top: 5px;">
+                Save Template
+            </button>
+            <div id="templatesList" style="margin-top: 10px;"></div>
+        </div>
+    </div>
+
+    <!-- Main canvas area -->
+    <div class="main">
+        <div class="toolbar">
+            <button class="btn btn-primary" onclick="exportThumbnail()">Export PNG</button>
+            <button class="btn btn-secondary" onclick="exportTemplate()">Export Template JSON</button>
+            <button class="btn btn-secondary" onclick="importTemplate()">Import Template</button>
+            <button class="btn btn-secondary" onclick="clearCanvas()">Clear All</button>
+        </div>
+
+        <div class="canvas-container">
+            <div id="canvas" style="width: 1280px; height: 720px;"></div>
+        </div>
+    </div>
+
+    <!-- Asset picker modal -->
+    <div id="assetModal" class="modal">
+        <div class="modal-content">
+            <h3>Select Image</h3>
+            <p style="margin-bottom: 15px; color: #888;">Choose from assets or upload a file</p>
+            <div class="asset-grid" id="assetGrid"></div>
+            <div style="margin-top: 20px;">
+                <input type="file" id="fileInput" accept="image/*" onchange="handleFileUpload(event)" style="display: none;">
+                <button class="btn btn-secondary" onclick="document.getElementById('fileInput').click()">
+                    Upload Image
+                </button>
+                <button class="btn btn-secondary" onclick="closeAssetPicker()" style="margin-left: 10px;">
+                    Cancel
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // State
+        let elements = [];
+        let selectedElement = null;
+        let isDragging = false;
+        let isResizing = false;
+        let resizeHandle = null;
+        let dragOffset = { x: 0, y: 0 };
+        let elementCounter = 0;
+        let assets = [];
+
+        const canvas = document.getElementById('canvas');
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', () => {
+            loadAssets();
+            loadTemplates();
+            canvas.addEventListener('mousedown', onCanvasMouseDown);
+            document.addEventListener('mousemove', onMouseMove);
+            document.addEventListener('mouseup', onMouseUp);
+            document.addEventListener('keydown', onKeyDown);
+        });
+
+        // Load assets from server
+        async function loadAssets() {
+            try {
+                const response = await fetch('/api/assets');
+                assets = await response.json();
+                renderAssetPicker();
+            } catch (e) {
+                console.log('Could not load assets:', e);
+            }
+        }
+
+        function renderAssetPicker() {
+            const grid = document.getElementById('assetGrid');
+            grid.innerHTML = '';
+
+            if (assets.length === 0) {
+                grid.innerHTML = '<div class="asset-item"><div class="placeholder">No assets found.<br>Add images to assets/ folder</div></div>';
+                return;
+            }
+
+            assets.forEach(asset => {
+                const item = document.createElement('div');
+                item.className = 'asset-item';
+                item.innerHTML = `<img src="/assets/${asset}" alt="${asset}">`;
+                item.onclick = () => addImageFromAsset(asset);
+                grid.appendChild(item);
+            });
+        }
+
+        // Add elements
+        function addText() {
+            const id = `element-${++elementCounter}`;
+            const element = {
+                id,
+                type: 'text',
+                x: 100,
+                y: 100,
+                width: 400,
+                height: 80,
+                content: 'Double-click to edit',
+                fontSize: 48,
+                fontWeight: 700,
+                color: '#ffffff',
+                fontFamily: 'Inter'
+            };
+            elements.push(element);
+            renderElement(element);
+            selectElement(id);
+            updateLayers();
+        }
+
+        function addImageFromAsset(assetPath) {
+            const id = `element-${++elementCounter}`;
+            const element = {
+                id,
+                type: 'image',
+                x: 100,
+                y: 100,
+                width: 200,
+                height: 200,
+                src: `/assets/${assetPath}`,
+                assetPath: assetPath
+            };
+            elements.push(element);
+            renderElement(element);
+            selectElement(id);
+            updateLayers();
+            closeAssetPicker();
+        }
+
+        function handleFileUpload(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                const id = `element-${++elementCounter}`;
+                const element = {
+                    id,
+                    type: 'image',
+                    x: 100,
+                    y: 100,
+                    width: 200,
+                    height: 200,
+                    src: e.target.result,
+                    fileName: file.name
+                };
+                elements.push(element);
+                renderElement(element);
+                selectElement(id);
+                updateLayers();
+                closeAssetPicker();
+            };
+            reader.readAsDataURL(file);
+        }
+
+        function addShape(shapeType) {
+            const id = `element-${++elementCounter}`;
+            const element = {
+                id,
+                type: 'shape',
+                shapeType,
+                x: 100,
+                y: 100,
+                width: 150,
+                height: 150,
+                color: '#4ecca3',
+                borderRadius: shapeType === 'circle' ? '50%' : '0'
+            };
+            elements.push(element);
+            renderElement(element);
+            selectElement(id);
+            updateLayers();
+        }
+
+        // Render element to canvas
+        function renderElement(el) {
+            let div = document.getElementById(el.id);
+            if (!div) {
+                div = document.createElement('div');
+                div.id = el.id;
+                div.className = 'element';
+                canvas.appendChild(div);
+            }
+
+            div.style.left = el.x + 'px';
+            div.style.top = el.y + 'px';
+            div.style.width = el.width + 'px';
+            div.style.height = el.height + 'px';
+
+            if (el.type === 'text') {
+                div.className = 'element element-text';
+                div.style.fontSize = el.fontSize + 'px';
+                div.style.fontWeight = el.fontWeight;
+                div.style.color = el.color;
+                div.style.fontFamily = el.fontFamily;
+                div.textContent = el.content;
+                div.ondblclick = () => editText(el.id);
+            } else if (el.type === 'image') {
+                div.className = 'element element-image';
+                div.innerHTML = `<img src="${el.src}" alt="image">`;
+            } else if (el.type === 'shape') {
+                div.className = 'element element-shape';
+                if (el.shapeType === 'circle') div.classList.add('circle');
+                div.style.background = el.color;
+                div.style.borderRadius = el.borderRadius;
+            }
+
+            if (selectedElement && selectedElement.id === el.id) {
+                div.classList.add('selected');
+                addResizeHandles(div);
+            }
+        }
+
+        function addResizeHandles(div) {
+            ['nw', 'ne', 'sw', 'se'].forEach(pos => {
+                let handle = div.querySelector(`.resize-handle.${pos}`);
+                if (!handle) {
+                    handle = document.createElement('div');
+                    handle.className = `resize-handle ${pos}`;
+                    handle.dataset.handle = pos;
+                    div.appendChild(handle);
+                }
+            });
+        }
+
+        function removeResizeHandles(div) {
+            div.querySelectorAll('.resize-handle').forEach(h => h.remove());
+        }
+
+        // Selection
+        function selectElement(id) {
+            // Deselect previous
+            if (selectedElement) {
+                const prevDiv = document.getElementById(selectedElement.id);
+                if (prevDiv) {
+                    prevDiv.classList.remove('selected');
+                    removeResizeHandles(prevDiv);
+                }
+            }
+
+            selectedElement = elements.find(e => e.id === id) || null;
+
+            if (selectedElement) {
+                const div = document.getElementById(id);
+                div.classList.add('selected');
+                addResizeHandles(div);
+                showProperties(selectedElement);
+            } else {
+                document.getElementById('propertiesPanel').classList.add('hidden');
+            }
+
+            updateLayers();
+        }
+
+        // Mouse events
+        function onCanvasMouseDown(e) {
+            const target = e.target;
+
+            // Check if clicking on resize handle
+            if (target.classList.contains('resize-handle')) {
+                isResizing = true;
+                resizeHandle = target.dataset.handle;
+                return;
+            }
+
+            // Check if clicking on an element
+            const elementDiv = target.closest('.element');
+            if (elementDiv) {
+                selectElement(elementDiv.id);
+                isDragging = true;
+                const rect = elementDiv.getBoundingClientRect();
+                dragOffset = {
+                    x: e.clientX - rect.left,
+                    y: e.clientY - rect.top
+                };
+            } else {
+                selectElement(null);
+            }
+        }
+
+        function onMouseMove(e) {
+            if (!selectedElement) return;
+
+            const canvasRect = canvas.getBoundingClientRect();
+
+            if (isDragging) {
+                const newX = e.clientX - canvasRect.left - dragOffset.x;
+                const newY = e.clientY - canvasRect.top - dragOffset.y;
+                selectedElement.x = Math.max(0, Math.min(newX, canvas.offsetWidth - selectedElement.width));
+                selectedElement.y = Math.max(0, Math.min(newY, canvas.offsetHeight - selectedElement.height));
+                renderElement(selectedElement);
+            }
+
+            if (isResizing) {
+                const mouseX = e.clientX - canvasRect.left;
+                const mouseY = e.clientY - canvasRect.top;
+
+                if (resizeHandle.includes('e')) {
+                    selectedElement.width = Math.max(50, mouseX - selectedElement.x);
+                }
+                if (resizeHandle.includes('w')) {
+                    const newWidth = selectedElement.x + selectedElement.width - mouseX;
+                    if (newWidth > 50) {
+                        selectedElement.x = mouseX;
+                        selectedElement.width = newWidth;
+                    }
+                }
+                if (resizeHandle.includes('s')) {
+                    selectedElement.height = Math.max(30, mouseY - selectedElement.y);
+                }
+                if (resizeHandle.includes('n')) {
+                    const newHeight = selectedElement.y + selectedElement.height - mouseY;
+                    if (newHeight > 30) {
+                        selectedElement.y = mouseY;
+                        selectedElement.height = newHeight;
+                    }
+                }
+                renderElement(selectedElement);
+            }
+        }
+
+        function onMouseUp() {
+            isDragging = false;
+            isResizing = false;
+            resizeHandle = null;
+        }
+
+        function onKeyDown(e) {
+            if (!selectedElement) return;
+
+            // Delete with backspace/delete (but not when editing text)
+            if ((e.key === 'Delete' || e.key === 'Backspace') && document.activeElement.tagName !== 'INPUT') {
+                e.preventDefault();
+                deleteSelected();
+            }
+
+            // Arrow keys for nudging
+            const nudge = e.shiftKey ? 10 : 1;
+            if (e.key === 'ArrowLeft') { selectedElement.x -= nudge; renderElement(selectedElement); }
+            if (e.key === 'ArrowRight') { selectedElement.x += nudge; renderElement(selectedElement); }
+            if (e.key === 'ArrowUp') { selectedElement.y -= nudge; renderElement(selectedElement); }
+            if (e.key === 'ArrowDown') { selectedElement.y += nudge; renderElement(selectedElement); }
+        }
+
+        // Text editing
+        function editText(id) {
+            const el = elements.find(e => e.id === id);
+            if (!el || el.type !== 'text') return;
+
+            const newContent = prompt('Edit text:', el.content);
+            if (newContent !== null) {
+                el.content = newContent;
+                renderElement(el);
+            }
+        }
+
+        // Properties panel
+        function showProperties(el) {
+            const panel = document.getElementById('propertiesPanel');
+            const content = document.getElementById('propertiesContent');
+            panel.classList.remove('hidden');
+
+            let html = `
+                <div class="prop-row">
+                    <div>
+                        <label>X</label>
+                        <input type="number" value="${el.x}" onchange="updateProp('${el.id}', 'x', this.value)">
+                    </div>
+                    <div>
+                        <label>Y</label>
+                        <input type="number" value="${el.y}" onchange="updateProp('${el.id}', 'y', this.value)">
+                    </div>
+                </div>
+                <div class="prop-row">
+                    <div>
+                        <label>Width</label>
+                        <input type="number" value="${el.width}" onchange="updateProp('${el.id}', 'width', this.value)">
+                    </div>
+                    <div>
+                        <label>Height</label>
+                        <input type="number" value="${el.height}" onchange="updateProp('${el.id}', 'height', this.value)">
+                    </div>
+                </div>
+            `;
+
+            if (el.type === 'text') {
+                html += `
+                    <label>Text</label>
+                    <input type="text" value="${el.content}" onchange="updateProp('${el.id}', 'content', this.value)">
+                    <label>Font Size</label>
+                    <input type="number" value="${el.fontSize}" onchange="updateProp('${el.id}', 'fontSize', this.value)">
+                    <label>Font Weight</label>
+                    <select onchange="updateProp('${el.id}', 'fontWeight', this.value)">
+                        <option value="400" ${el.fontWeight == 400 ? 'selected' : ''}>Normal</option>
+                        <option value="600" ${el.fontWeight == 600 ? 'selected' : ''}>Semi Bold</option>
+                        <option value="700" ${el.fontWeight == 700 ? 'selected' : ''}>Bold</option>
+                        <option value="800" ${el.fontWeight == 800 ? 'selected' : ''}>Extra Bold</option>
+                        <option value="900" ${el.fontWeight == 900 ? 'selected' : ''}>Black</option>
+                    </select>
+                    <label>Color</label>
+                    <input type="color" value="${el.color}" onchange="updateProp('${el.id}', 'color', this.value)">
+                `;
+            }
+
+            if (el.type === 'shape') {
+                html += `
+                    <label>Color</label>
+                    <input type="color" value="${el.color}" onchange="updateProp('${el.id}', 'color', this.value)">
+                    <label>Border Radius</label>
+                    <input type="text" value="${el.borderRadius}" onchange="updateProp('${el.id}', 'borderRadius', this.value)">
+                `;
+            }
+
+            content.innerHTML = html;
+        }
+
+        function updateProp(id, prop, value) {
+            const el = elements.find(e => e.id === id);
+            if (!el) return;
+
+            if (['x', 'y', 'width', 'height', 'fontSize', 'fontWeight'].includes(prop)) {
+                el[prop] = parseInt(value);
+            } else {
+                el[prop] = value;
+            }
+            renderElement(el);
+        }
+
+        function deleteSelected() {
+            if (!selectedElement) return;
+            const div = document.getElementById(selectedElement.id);
+            if (div) div.remove();
+            elements = elements.filter(e => e.id !== selectedElement.id);
+            selectedElement = null;
+            document.getElementById('propertiesPanel').classList.add('hidden');
+            updateLayers();
+        }
+
+        // Layers
+        function updateLayers() {
+            const container = document.getElementById('layers');
+            container.innerHTML = '';
+
+            [...elements].reverse().forEach(el => {
+                const div = document.createElement('div');
+                div.className = 'layer-item' + (selectedElement && selectedElement.id === el.id ? ' selected' : '');
+
+                let icon = '▢';
+                let name = el.type;
+                if (el.type === 'text') { icon = 'T'; name = el.content.substring(0, 20); }
+                if (el.type === 'image') { icon = '🖼'; name = el.assetPath || el.fileName || 'Image'; }
+                if (el.type === 'shape') { icon = el.shapeType === 'circle' ? '●' : '▢'; name = el.shapeType; }
+
+                div.innerHTML = `<span class="layer-icon">${icon}</span><span class="layer-name">${name}</span>`;
+                div.onclick = () => selectElement(el.id);
+                container.appendChild(div);
+            });
+        }
+
+        // Asset picker
+        function showAssetPicker() {
+            document.getElementById('assetModal').classList.add('active');
+        }
+
+        function closeAssetPicker() {
+            document.getElementById('assetModal').classList.remove('active');
+        }
+
+        // Canvas settings
+        function resizeCanvas() {
+            const width = parseInt(document.getElementById('canvasWidth').value);
+            const height = parseInt(document.getElementById('canvasHeight').value);
+            canvas.style.width = width + 'px';
+            canvas.style.height = height + 'px';
+        }
+
+        function updateCanvasBg() {
+            canvas.style.background = document.getElementById('canvasBg').value;
+        }
+
+        function clearCanvas() {
+            if (!confirm('Clear all elements?')) return;
+            elements.forEach(el => {
+                const div = document.getElementById(el.id);
+                if (div) div.remove();
+            });
+            elements = [];
+            selectedElement = null;
+            document.getElementById('propertiesPanel').classList.add('hidden');
+            updateLayers();
+        }
+
+        // Templates
+        function getTemplateData() {
+            return {
+                canvas: {
+                    width: parseInt(document.getElementById('canvasWidth').value),
+                    height: parseInt(document.getElementById('canvasHeight').value),
+                    background: document.getElementById('canvasBg').value
+                },
+                elements: elements.map(el => {
+                    const copy = { ...el };
+                    // For images, keep asset path but remove data URLs
+                    if (el.type === 'image' && el.assetPath) {
+                        copy.src = el.assetPath;
+                    }
+                    delete copy.id;
+                    return copy;
+                })
+            };
+        }
+
+        function saveTemplate() {
+            const name = document.getElementById('templateName').value.trim();
+            if (!name) {
+                alert('Please enter a template name');
+                return;
+            }
+
+            const templates = JSON.parse(localStorage.getItem('templates') || '{}');
+            templates[name] = getTemplateData();
+            localStorage.setItem('templates', JSON.stringify(templates));
+            document.getElementById('templateName').value = '';
+            loadTemplates();
+            alert(`Template "${name}" saved!`);
+        }
+
+        function loadTemplates() {
+            const templates = JSON.parse(localStorage.getItem('templates') || '{}');
+            const container = document.getElementById('templatesList');
+            container.innerHTML = '';
+
+            Object.keys(templates).forEach(name => {
+                const div = document.createElement('div');
+                div.className = 'template-item';
+                div.innerHTML = `
+                    <span>${name}</span>
+                    <div>
+                        <button class="btn btn-secondary" onclick="applyTemplate('${name}')">Load</button>
+                        <button class="btn btn-danger" onclick="deleteTemplate('${name}')" style="margin-left: 5px;">×</button>
+                    </div>
+                `;
+                container.appendChild(div);
+            });
+        }
+
+        function applyTemplate(name) {
+            const templates = JSON.parse(localStorage.getItem('templates') || '{}');
+            const template = templates[name];
+            if (!template) return;
+
+            clearCanvasQuiet();
+
+            document.getElementById('canvasWidth').value = template.canvas.width;
+            document.getElementById('canvasHeight').value = template.canvas.height;
+            document.getElementById('canvasBg').value = template.canvas.background;
+            resizeCanvas();
+            updateCanvasBg();
+
+            template.elements.forEach(el => {
+                const id = `element-${++elementCounter}`;
+                const element = { ...el, id };
+
+                // Resolve asset path to URL
+                if (element.type === 'image' && element.assetPath) {
+                    element.src = `/assets/${element.assetPath}`;
+                } else if (element.type === 'image' && !element.src.startsWith('data:') && !element.src.startsWith('/')) {
+                    element.src = `/assets/${element.src}`;
+                }
+
+                elements.push(element);
+                renderElement(element);
+            });
+            updateLayers();
+        }
+
+        function clearCanvasQuiet() {
+            elements.forEach(el => {
+                const div = document.getElementById(el.id);
+                if (div) div.remove();
+            });
+            elements = [];
+            selectedElement = null;
+        }
+
+        function deleteTemplate(name) {
+            if (!confirm(`Delete template "${name}"?`)) return;
+            const templates = JSON.parse(localStorage.getItem('templates') || '{}');
+            delete templates[name];
+            localStorage.setItem('templates', JSON.stringify(templates));
+            loadTemplates();
+        }
+
+        function exportTemplate() {
+            const data = getTemplateData();
+            const json = JSON.stringify(data, null, 2);
+            const blob = new Blob([json], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'template.json';
+            a.click();
+        }
+
+        function importTemplate() {
+            const input = document.createElement('input');
+            input.type = 'file';
+            input.accept = '.json';
+            input.onchange = (e) => {
+                const file = e.target.files[0];
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    try {
+                        const template = JSON.parse(e.target.result);
+                        clearCanvasQuiet();
+
+                        document.getElementById('canvasWidth').value = template.canvas.width;
+                        document.getElementById('canvasHeight').value = template.canvas.height;
+                        document.getElementById('canvasBg').value = template.canvas.background;
+                        resizeCanvas();
+                        updateCanvasBg();
+
+                        template.elements.forEach(el => {
+                            const id = `element-${++elementCounter}`;
+                            const element = { ...el, id };
+                            if (element.type === 'image' && element.assetPath) {
+                                element.src = `/assets/${element.assetPath}`;
+                            }
+                            elements.push(element);
+                            renderElement(element);
+                        });
+                        updateLayers();
+                    } catch (err) {
+                        alert('Invalid template file');
+                    }
+                };
+                reader.readAsText(file);
+            };
+            input.click();
+        }
+
+        // Export as PNG
+        async function exportThumbnail() {
+            // Deselect to hide handles
+            selectElement(null);
+
+            try {
+                const response = await fetch('/api/export', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(getTemplateData())
+                });
+
+                if (response.ok) {
+                    const blob = await response.blob();
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = 'thumbnail.png';
+                    a.click();
+                } else {
+                    alert('Export failed');
+                }
+            } catch (e) {
+                alert('Export failed: ' + e.message);
+            }
+        }
+    </script>
+</body>
+</html>
