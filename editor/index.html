@@ -261,16 +261,42 @@
             align-items: center;
             justify-content: center;
             transition: all 0.2s;
+            position: relative;
+            border: 2px solid transparent;
         }
 
         .asset-item:hover {
             background: #2d3a5a;
         }
 
+        .asset-item.selected {
+            background: #4ecca3;
+            border: 2px solid #4ecca3;
+        }
+
         .asset-item img {
             max-width: 100%;
             max-height: 100%;
             object-fit: contain;
+        }
+
+        .asset-item .checkmark {
+            position: absolute;
+            top: 5px;
+            right: 5px;
+            width: 20px;
+            height: 20px;
+            background: #4ecca3;
+            border-radius: 50%;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            font-size: 12px;
+            color: #1a1a2e;
+        }
+
+        .asset-item.selected .checkmark {
+            display: flex;
         }
 
         .asset-item .placeholder {
@@ -422,15 +448,18 @@
     <!-- Asset picker modal -->
     <div id="assetModal" class="modal">
         <div class="modal-content">
-            <h3>Select Image</h3>
-            <p style="margin-bottom: 15px; color: #888;">Choose from assets or upload a file</p>
+            <h3>Select Images</h3>
+            <p style="margin-bottom: 15px; color: #888;">Click to select multiple images, then click "Add Selected"</p>
             <div class="asset-grid" id="assetGrid"></div>
-            <div style="margin-top: 20px;">
-                <input type="file" id="fileInput" accept="image/*" onchange="handleFileUpload(event)" style="display: none;">
-                <button class="btn btn-secondary" onclick="document.getElementById('fileInput').click()">
-                    Upload Image
+            <div style="margin-top: 20px; display: flex; gap: 10px; align-items: center;">
+                <button class="btn btn-primary" id="addSelectedBtn" onclick="addSelectedAssets()" disabled>
+                    Add Selected (<span id="selectedCount">0</span>)
                 </button>
-                <button class="btn btn-secondary" onclick="closeAssetPicker()" style="margin-left: 10px;">
+                <input type="file" id="fileInput" accept="image/*" multiple onchange="handleFileUpload(event)" style="display: none;">
+                <button class="btn btn-secondary" onclick="document.getElementById('fileInput').click()">
+                    Upload Files
+                </button>
+                <button class="btn btn-secondary" onclick="closeAssetPicker()">
                     Cancel
                 </button>
             </div>
@@ -447,6 +476,7 @@
         let dragOffset = { x: 0, y: 0 };
         let elementCounter = 0;
         let assets = [];
+        let selectedAssets = new Set();
 
         const canvas = document.getElementById('canvas');
 
@@ -482,11 +512,63 @@
 
             assets.forEach(asset => {
                 const item = document.createElement('div');
-                item.className = 'asset-item';
-                item.innerHTML = `<img src="/assets/${asset}" alt="${asset}">`;
-                item.onclick = () => addImageFromAsset(asset);
+                item.className = 'asset-item' + (selectedAssets.has(asset) ? ' selected' : '');
+                item.innerHTML = `
+                    <img src="/assets/${asset}" alt="${asset}">
+                    <span class="checkmark">✓</span>
+                `;
+                item.onclick = () => toggleAssetSelection(asset, item);
                 grid.appendChild(item);
             });
+
+            updateSelectedCount();
+        }
+
+        function toggleAssetSelection(asset, item) {
+            if (selectedAssets.has(asset)) {
+                selectedAssets.delete(asset);
+                item.classList.remove('selected');
+            } else {
+                selectedAssets.add(asset);
+                item.classList.add('selected');
+            }
+            updateSelectedCount();
+        }
+
+        function updateSelectedCount() {
+            const count = selectedAssets.size;
+            document.getElementById('selectedCount').textContent = count;
+            document.getElementById('addSelectedBtn').disabled = count === 0;
+        }
+
+        function addSelectedAssets() {
+            const assetsToAdd = Array.from(selectedAssets);
+            let offsetX = 100;
+            let offsetY = 100;
+
+            assetsToAdd.forEach((asset, index) => {
+                const id = `element-${++elementCounter}`;
+                const element = {
+                    id,
+                    type: 'image',
+                    x: offsetX + (index % 3) * 220,
+                    y: offsetY + Math.floor(index / 3) * 220,
+                    width: 200,
+                    height: 200,
+                    src: `/assets/${asset}`,
+                    assetPath: asset
+                };
+                elements.push(element);
+                renderElement(element);
+            });
+
+            updateLayers();
+            closeAssetPicker();
+
+            // Select the last added element
+            if (assetsToAdd.length > 0) {
+                selectElement(`element-${elementCounter}`);
+            }
         }
 
         // Text presets
@@ -542,29 +624,39 @@
         }
 
         function handleFileUpload(event) {
-            const file = event.target.files[0];
-            if (!file) return;
+            const files = Array.from(event.target.files);
+            if (files.length === 0) return;
 
-            const reader = new FileReader();
-            reader.onload = (e) => {
-                const id = `element-${++elementCounter}`;
-                const element = {
-                    id,
-                    type: 'image',
-                    x: 100,
-                    y: 100,
-                    width: 200,
-                    height: 200,
-                    src: e.target.result,
-                    fileName: file.name
+            let loaded = 0;
+            files.forEach((file, index) => {
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    const id = `element-${++elementCounter}`;
+                    const element = {
+                        id,
+                        type: 'image',
+                        x: 100 + (index % 3) * 220,
+                        y: 100 + Math.floor(index / 3) * 220,
+                        width: 200,
+                        height: 200,
+                        src: e.target.result,
+                        fileName: file.name
+                    };
+                    elements.push(element);
+                    renderElement(element);
+
+                    loaded++;
+                    if (loaded === files.length) {
+                        updateLayers();
+                        closeAssetPicker();
+                        selectElement(id);
+                    }
                 };
-                elements.push(element);
-                renderElement(element);
-                selectElement(id);
-                updateLayers();
-                closeAssetPicker();
-            };
-            reader.readAsDataURL(file);
+                reader.readAsDataURL(file);
+            });
+
+            // Reset file input
+            event.target.value = '';
         }
 
         function addShape(shapeType) {
@@ -913,11 +1005,14 @@
 
         // Asset picker
         function showAssetPicker() {
+            selectedAssets.clear();
+            renderAssetPicker();
             document.getElementById('assetModal').classList.add('active');
         }
 
         function closeAssetPicker() {
             document.getElementById('assetModal').classList.remove('active');
+            selectedAssets.clear();
         }
 
         // Canvas settings
