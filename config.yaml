@@ -1,0 +1,51 @@
+# YouTube Thumbnail Generator Configuration
+# All fields are optional - the generator will smartly adapt
+
+# Output settings
+output:
+  width: 1280
+  height: 720
+  filename: "thumbnail.png"
+
+# Grid layout for concept images
+# rows x cols grid (e.g., 1 row, 3 cols = 3 images in a row)
+grid:
+  rows: 1
+  cols: 3
+
+# Text content
+title: "HashMap vs TreeMap"
+subtitle: "Which one should you use?"
+
+# Colors and styling
+style:
+  background_color: "#1a1a2e"
+  title_color: "#ffffff"
+  subtitle_color: "#e0e0e0"
+  accent_color: "#4ecca3"
+
+# Assets - just use the filename! (or full path if there's a conflict)
+# Examples:
+#   "java-logo.svg"           -> auto-finds in assets/
+#   "common/logos/java.svg"   -> explicit path from assets/
+
+# Difficulty badge: easy, medium, hard
+difficulty: "medium"
+
+# Avatar/face image (your face for the thumbnail)
+avatar: "avatar.png"
+
+# Brand logo (channel logo)
+brand_logo: "channel-logo.png"
+
+# Author name displayed on thumbnail
+author_name: "Your Name"
+
+# Concept images to display in the grid
+concepts:
+  - "hashmap.png"
+  - "treemap.png"
+  - "comparison.png"
+
+# Tech/language logo
+tech_logo: "java-logo.svg"
