@@ -210,6 +210,52 @@
             background: #4ecca3;
         }
 
+        /* Alignment guides */
+        .guide {
+            position: absolute;
+            background: #ff6b6b;
+            pointer-events: none;
+            z-index: 1000;
+        }
+
+        .guide-vertical {
+            width: 1px;
+            top: 0;
+            bottom: 0;
+        }
+
+        .guide-horizontal {
+            height: 1px;
+            left: 0;
+            right: 0;
+        }
+
+        .guide-spacing {
+            background: #4ecca3;
+        }
+
+        .guide-label {
+            position: absolute;
+            background: #ff6b6b;
+            color: white;
+            font-size: 10px;
+            padding: 2px 4px;
+            border-radius: 3px;
+            pointer-events: none;
+            z-index: 1001;
+            white-space: nowrap;
+        }
+
+        #guides {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            pointer-events: none;
+            z-index: 999;
+        }
+
         .element-shape.circle {
             border-radius: 50%;
         }
@@ -442,7 +488,9 @@
         </div>
 
         <div class="canvas-container">
-            <div id="canvas" style="width: 1280px; height: 720px;"></div>
+            <div id="canvas" style="width: 1280px; height: 720px;">
+                <div id="guides"></div>
+            </div>
         </div>
     </div>
 
@@ -480,6 +528,154 @@
         let selectedAssets = new Set();
 
         const canvas = document.getElementById('canvas');
+        const guidesContainer = document.getElementById('guides');
+        const SNAP_THRESHOLD = 5; // pixels
+
+        // Alignment guide helpers
+        function getElementBounds(el) {
+            return {
+                left: el.x,
+                right: el.x + el.width,
+                top: el.y,
+                bottom: el.y + el.height,
+                centerX: el.x + el.width / 2,
+                centerY: el.y + el.height / 2,
+                width: el.width,
+                height: el.height
+            };
+        }
+
+        function getCanvasBounds() {
+            return {
+                left: 0,
+                right: parseInt(canvas.style.width),
+                top: 0,
+                bottom: parseInt(canvas.style.height),
+                centerX: parseInt(canvas.style.width) / 2,
+                centerY: parseInt(canvas.style.height) / 2
+            };
+        }
+
+        function findAlignments(movingEl) {
+            const guides = [];
+            const snap = { x: null, y: null };
+            const moving = getElementBounds(movingEl);
+            const canvasBounds = getCanvasBounds();
+
+            // Check canvas center alignment
+            if (Math.abs(moving.centerX - canvasBounds.centerX) < SNAP_THRESHOLD) {
+                guides.push({ type: 'vertical', pos: canvasBounds.centerX, label: 'center' });
+                snap.x = canvasBounds.centerX - movingEl.width / 2;
+            }
+            if (Math.abs(moving.centerY - canvasBounds.centerY) < SNAP_THRESHOLD) {
+                guides.push({ type: 'horizontal', pos: canvasBounds.centerY, label: 'center' });
+                snap.y = canvasBounds.centerY - movingEl.height / 2;
+            }
+
+            // Check alignment with other elements
+            elements.forEach(el => {
+                if (el.id === movingEl.id) return;
+                const other = getElementBounds(el);
+
+                // Vertical alignments (left, center, right edges)
+                const vChecks = [
+                    { movingVal: moving.left, otherVal: other.left, label: 'left' },
+                    { movingVal: moving.left, otherVal: other.centerX, label: 'center' },
+                    { movingVal: moving.left, otherVal: other.right, label: 'right' },
+                    { movingVal: moving.centerX, otherVal: other.left, label: 'left' },
+                    { movingVal: moving.centerX, otherVal: other.centerX, label: 'center' },
+                    { movingVal: moving.centerX, otherVal: other.right, label: 'right' },
+                    { movingVal: moving.right, otherVal: other.left, label: 'left' },
+                    { movingVal: moving.right, otherVal: other.centerX, label: 'center' },
+                    { movingVal: moving.right, otherVal: other.right, label: 'right' }
+                ];
+
+                vChecks.forEach(check => {
+                    if (Math.abs(check.movingVal - check.otherVal) < SNAP_THRESHOLD) {
+                        guides.push({ type: 'vertical', pos: check.otherVal });
+                        // Snap based on which edge is aligning
+                        if (check.movingVal === moving.left) {
+                            snap.x = check.otherVal;
+                        } else if (check.movingVal === moving.centerX) {
+                            snap.x = check.otherVal - movingEl.width / 2;
+                        } else {
+                            snap.x = check.otherVal - movingEl.width;
+                        }
+                    }
+                });
+
+                // Horizontal alignments (top, center, bottom edges)
+                const hChecks = [
+                    { movingVal: moving.top, otherVal: other.top },
+                    { movingVal: moving.top, otherVal: other.centerY },
+                    { movingVal: moving.top, otherVal: other.bottom },
+                    { movingVal: moving.centerY, otherVal: other.top },
+                    { movingVal: moving.centerY, otherVal: other.centerY },
+                    { movingVal: moving.centerY, otherVal: other.bottom },
+                    { movingVal: moving.bottom, otherVal: other.top },
+                    { movingVal: moving.bottom, otherVal: other.centerY },
+                    { movingVal: moving.bottom, otherVal: other.bottom }
+                ];
+
+                hChecks.forEach(check => {
+                    if (Math.abs(check.movingVal - check.otherVal) < SNAP_THRESHOLD) {
+                        guides.push({ type: 'horizontal', pos: check.otherVal });
+                        if (check.movingVal === moving.top) {
+                            snap.y = check.otherVal;
+                        } else if (check.movingVal === moving.centerY) {
+                            snap.y = check.otherVal - movingEl.height / 2;
+                        } else {
+                            snap.y = check.otherVal - movingEl.height;
+                        }
+                    }
+                });
+
+                // Equal spacing detection (check gaps between elements)
+                // Horizontal spacing
+                const hGap = moving.left - other.right;
+                const hGap2 = other.left - moving.right;
+                elements.forEach(el2 => {
+                    if (el2.id === movingEl.id || el2.id === el.id) return;
+                    const other2 = getElementBounds(el2);
+
+                    // Check if gap matches another gap
+                    const existingGap = other2.left - other.right;
+                    if (existingGap > 0 && Math.abs(hGap - existingGap) < SNAP_THRESHOLD) {
+                        guides.push({ type: 'spacing', pos: other.right + existingGap / 2 });
+                    }
+                });
+            });
+
+            return { guides, snap };
+        }
+
+        function renderGuides(guides) {
+            guidesContainer.innerHTML = '';
+
+            // Remove duplicates based on position
+            const uniqueGuides = [];
+            guides.forEach(g => {
+                const exists = uniqueGuides.find(u => u.type === g.type && Math.abs(u.pos - g.pos) < 1);
+                if (!exists) uniqueGuides.push(g);
+            });
+
+            uniqueGuides.forEach(guide => {
+                const line = document.createElement('div');
+                line.className = `guide guide-${guide.type}`;
+
+                if (guide.type === 'vertical') {
+                    line.style.left = guide.pos + 'px';
+                } else if (guide.type === 'horizontal') {
+                    line.style.top = guide.pos + 'px';
+                }
+
+                guidesContainer.appendChild(line);
+            });
+        }
+
+        function clearGuides() {
+            guidesContainer.innerHTML = '';
+        }
 
         // Initialize
         document.addEventListener('DOMContentLoaded', () => {
@@ -792,10 +988,23 @@
             const canvasRect = canvas.getBoundingClientRect();
 
             if (isDragging) {
-                const newX = e.clientX - canvasRect.left - dragOffset.x;
-                const newY = e.clientY - canvasRect.top - dragOffset.y;
+                let newX = e.clientX - canvasRect.left - dragOffset.x;
+                let newY = e.clientY - canvasRect.top - dragOffset.y;
+
+                // Temporarily update position to check alignments
+                const tempEl = { ...selectedElement, x: newX, y: newY };
+                const { guides, snap } = findAlignments(tempEl);
+
+                // Apply snapping
+                if (snap.x !== null) newX = snap.x;
+                if (snap.y !== null) newY = snap.y;
+
+                // Constrain to canvas
                 selectedElement.x = Math.max(0, Math.min(newX, canvas.offsetWidth - selectedElement.width));
                 selectedElement.y = Math.max(0, Math.min(newY, canvas.offsetHeight - selectedElement.height));
+
+                // Show guides
+                renderGuides(guides);
                 renderElement(selectedElement);
             }
 
@@ -823,6 +1032,10 @@
                         selectedElement.height = newHeight;
                     }
                 }
+
+                // Show guides while resizing too
+                const { guides } = findAlignments(selectedElement);
+                renderGuides(guides);
                 renderElement(selectedElement);
             }
         }
@@ -831,6 +1044,7 @@
             isDragging = false;
             isResizing = false;
             resizeHandle = null;
+            clearGuides();
         }
 
         function onKeyDown(e) {
