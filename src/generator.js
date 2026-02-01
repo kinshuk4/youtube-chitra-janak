@@ -49,10 +49,26 @@ async function findAsset(name) {
   let found = await searchDir(ASSETS_DIR);
   if (found) return found;
 
-  // Try with common extensions
+  // Try with common extensions if no extension provided
   if (!name.includes('.')) {
     for (const ext of ['.png', '.jpg', '.jpeg', '.svg', '.webp']) {
-      found = await searchDir(ASSETS_DIR);
+      const nameWithExt = name + ext;
+      async function searchWithExt(dir) {
+        try {
+          const entries = await readdir(dir, { withFileTypes: true });
+          for (const entry of entries) {
+            const fullPath = join(dir, entry.name);
+            if (entry.isDirectory()) {
+              const found = await searchWithExt(fullPath);
+              if (found) return found;
+            } else if (entry.name === nameWithExt) {
+              return fullPath;
+            }
+          }
+        } catch (e) {}
+        return null;
+      }
+      found = await searchWithExt(ASSETS_DIR);
       if (found) return found;
     }
   }
@@ -61,9 +77,73 @@ async function findAsset(name) {
 }
 
 /**
+ * Get mime type from file extension
+ */
+function getMimeType(filePath) {
+  const ext = filePath.toLowerCase().split('.').pop();
+  const mimeTypes = {
+    'png': 'image/png',
+    'jpg': 'image/jpeg',
+    'jpeg': 'image/jpeg',
+    'gif': 'image/gif',
+    'svg': 'image/svg+xml',
+    'webp': 'image/webp',
+  };
+  return mimeTypes[ext] || 'image/png';
+}
+
+/**
+ * Convert a file to base64 data URL
+ */
+async function fileToDataURL(filePath) {
+  try {
+    const data = await readFile(filePath);
+    const mimeType = getMimeType(filePath);
+    const base64 = data.toString('base64');
+    return `data:${mimeType};base64,${base64}`;
+  } catch (e) {
+    console.warn(`  Warning: Could not read file: ${filePath}`);
+    return null;
+  }
+}
+
+/**
+ * Resolve image source to a data URL or keep as-is if already data URL
+ */
+async function resolveImageSrc(el) {
+  let src = el.src || '';
+
+  // Already a data URL - keep as is
+  if (src.startsWith('data:')) {
+    return src;
+  }
+
+  // Determine the file path
+  let filePath = null;
+
+  if (el.assetPath) {
+    filePath = join(ASSETS_DIR, el.assetPath);
+  } else if (src.startsWith('/assets/')) {
+    const relativePath = src.replace('/assets/', '');
+    filePath = join(ASSETS_DIR, relativePath);
+  } else if (src.startsWith('file://')) {
+    filePath = src.replace('file://', '');
+  } else if (src) {
+    filePath = join(ASSETS_DIR, src);
+  }
+
+  if (filePath && existsSync(filePath)) {
+    return await fileToDataURL(filePath);
+  }
+
+  console.warn(`  Warning: Asset not found: ${el.assetPath || src}`);
+  return null;
+}
+
+/**
  * Generate HTML from template data
  */
-function generateHTML(templateData) {
+async function generateHTML(templateData) {
   const { canvas, elements } = templateData;
 
   let elementsHTML = '';
@@ -76,15 +156,10 @@ function generateHTML(templateData) {
       const textStyle = `${style} font-size: ${el.fontSize || 48}px; font-weight: ${el.fontWeight || 700}; color: ${el.color || '#ffffff'}; font-family: ${el.fontFamily || 'Inter'};`;
       elementsHTML += `        <div class="element element-text align-${align}" style="${textStyle}">${el.content || ''}</div>\n`;
     } else if (el.type === 'image') {
-      let src = el.src || '';
-      if (el.assetPath) {
-        const assetPath = join(ASSETS_DIR, el.assetPath);
-        src = `file://${assetPath}`;
-      } else if (!src.startsWith('data:') && !src.startsWith('file://')) {
-        const assetPath = join(ASSETS_DIR, src);
-        src = `file://${assetPath}`;
+      const src = await resolveImageSrc(el);
+      if (src) {
+        elementsHTML += `        <div class="element element-image" style="${style}"><img src="${src}"></div>\n`;
       }
-      elementsHTML += `        <div class="element element-image" style="${style}"><img src="${src}"></div>\n`;
     } else if (el.type === 'shape') {
       const shapeStyle = `${style} background: ${el.color || '#4ecca3'}; border-radius: ${el.borderRadius || '0'};`;
       elementsHTML += `        <div class="element element-shape" style="${shapeStyle}"></div>\n`;
@@ -140,7 +215,7 @@ ${elementsHTML}    </div>
  * Generate thumbnail from template data (returns PNG buffer)
  */
 export async function generateThumbnail(templateData) {
-  const html = generateHTML(templateData);
+  const html = await generateHTML(templateData);
   const { canvas } = templateData;
 
   const browser = await chromium.launch();
@@ -179,21 +254,7 @@ export async function generateFromTemplate(templatePath, outputPath) {
   const content = await readFile(fullTemplatePath, 'utf-8');
   const templateData = JSON.parse(content);
 
-  // Resolve asset paths in elements
-  for (const el of templateData.elements) {
-    if (el.type === 'image') {
-      const assetPath = el.assetPath || el.src;
-      if (assetPath && !assetPath.startsWith('data:')) {
-        const found = await findAsset(assetPath);
-        if (found) {
-          el.src = `file://${found}`;
-        } else {
-          console.warn(`  Warning: Asset not found: ${assetPath}`);
-        }
-      }
-    }
-  }
-
+  // generateHTML will handle resolving image paths to base64
   const pngBuffer = await generateThumbnail(templateData);
 
   // Determine output path
