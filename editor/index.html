@@ -434,10 +434,11 @@
     <!-- Main canvas area -->
     <div class="main">
         <div class="toolbar">
-            <button class="btn btn-primary" onclick="exportThumbnail()">Export PNG</button>
-            <button class="btn btn-secondary" onclick="exportTemplate()">Export Template JSON</button>
-            <button class="btn btn-secondary" onclick="importTemplate()">Import Template</button>
+            <button class="btn btn-primary" onclick="exportThumbnail()" title="⌘⇧E">Export PNG</button>
+            <button class="btn btn-secondary" onclick="exportTemplate()" title="⌘E">Export JSON</button>
+            <button class="btn btn-secondary" onclick="importTemplate()" title="⌘I">Import JSON</button>
             <button class="btn btn-secondary" onclick="clearCanvas()">Clear All</button>
+            <span style="color: #666; font-size: 12px; margin-left: 10px;">⌘S to save template</span>
         </div>
 
         <div class="canvas-container">
@@ -833,6 +834,41 @@
         }
 
         function onKeyDown(e) {
+            const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
+            const cmdKey = isMac ? e.metaKey : e.ctrlKey;
+
+            // Global shortcuts (work even without selection)
+            if (cmdKey && !e.shiftKey && e.key.toLowerCase() === 'i') {
+                e.preventDefault();
+                importTemplate();
+                return;
+            }
+
+            if (cmdKey && !e.shiftKey && e.key.toLowerCase() === 'e') {
+                e.preventDefault();
+                exportTemplate();
+                return;
+            }
+
+            if (cmdKey && e.shiftKey && e.key.toLowerCase() === 'e') {
+                e.preventDefault();
+                exportThumbnail();
+                return;
+            }
+
+            if (cmdKey && e.key.toLowerCase() === 's') {
+                e.preventDefault();
+                // Focus template name input if empty, otherwise save
+                const nameInput = document.getElementById('templateName');
+                if (nameInput.value.trim()) {
+                    saveTemplate();
+                } else {
+                    nameInput.focus();
+                }
+                return;
+            }
+
+            // Element-specific shortcuts
             if (!selectedElement) return;
 
             // Delete with backspace/delete (but not when editing text)
