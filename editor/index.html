@@ -320,6 +320,11 @@
             border: 2px solid #4ecca3;
         }
 
+        .asset-item.focused {
+            outline: 2px solid #fff;
+            outline-offset: 2px;
+        }
+
         .asset-item img {
             max-width: 100%;
             max-height: 100%;
@@ -502,7 +507,7 @@
                    style="width: 100%; margin-bottom: 15px; padding: 10px; border-radius: 6px; border: 1px solid #2d3a5a; background: #1a1a2e; color: #fff;"
                    oninput="filterAssets(this.value)">
             <div class="asset-grid" id="assetGrid" style="max-height: 400px; overflow-y: auto;"></div>
-            <div style="margin-top: 20px; display: flex; gap: 10px; align-items: center;">
+            <div style="margin-top: 15px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
                 <button class="btn btn-primary" id="addSelectedBtn" onclick="addSelectedAssets()" disabled>
                     Add Selected (<span id="selectedCount">0</span>)
                 </button>
@@ -513,6 +518,9 @@
                 <button class="btn btn-secondary" onclick="closeAssetPicker()">
                     Cancel
                 </button>
+            </div>
+            <div style="margin-top: 10px; color: #666; font-size: 11px;">
+                ↑↓←→ Navigate &nbsp;•&nbsp; Space Select &nbsp;•&nbsp; Enter Add &nbsp;•&nbsp; Esc Close
             </div>
         </div>
     </div>
@@ -687,6 +695,7 @@
             document.addEventListener('mousemove', onMouseMove);
             document.addEventListener('mouseup', onMouseUp);
             document.addEventListener('keydown', onKeyDown);
+            document.addEventListener('keydown', handleAssetPickerKeydown);
         });
 
         // Load assets from server
@@ -1284,10 +1293,12 @@
 
         // Asset picker
         let filteredAssets = [];
+        let focusedAssetIndex = -1; // -1 means search input is focused
 
         function showAssetPicker() {
             selectedAssets.clear();
             filteredAssets = [...assets]; // Reset to show all assets
+            focusedAssetIndex = -1;
             document.getElementById('assetSearch').value = ''; // Clear search
             renderAssetPicker();
             document.getElementById('assetModal').classList.add('active');
@@ -1299,6 +1310,92 @@
             document.getElementById('assetModal').classList.remove('active');
             selectedAssets.clear();
             filteredAssets = [];
+            focusedAssetIndex = -1;
+        }
+
+        function handleAssetPickerKeydown(e) {
+            const modal = document.getElementById('assetModal');
+            if (!modal.classList.contains('active')) return;
+
+            const gridCols = 4; // Number of columns in the grid
+
+            if (e.key === 'ArrowDown') {
+                e.preventDefault();
+                if (focusedAssetIndex === -1) {
+                    // Move from search to first item
+                    focusedAssetIndex = 0;
+                } else {
+                    // Move down a row
+                    focusedAssetIndex = Math.min(focusedAssetIndex + gridCols, filteredAssets.length - 1);
+                }
+                updateAssetFocus();
+            } else if (e.key === 'ArrowUp') {
+                e.preventDefault();
+                if (focusedAssetIndex < gridCols) {
+                    // Move back to search
+                    focusedAssetIndex = -1;
+                    document.getElementById('assetSearch').focus();
+                } else {
+                    focusedAssetIndex = focusedAssetIndex - gridCols;
+                }
+                updateAssetFocus();
+            } else if (e.key === 'ArrowRight') {
+                if (focusedAssetIndex >= 0) {
+                    e.preventDefault();
+                    focusedAssetIndex = Math.min(focusedAssetIndex + 1, filteredAssets.length - 1);
+                    updateAssetFocus();
+                }
+            } else if (e.key === 'ArrowLeft') {
+                if (focusedAssetIndex >= 0) {
+                    e.preventDefault();
+                    focusedAssetIndex = Math.max(focusedAssetIndex - 1, 0);
+                    updateAssetFocus();
+                }
+            } else if (e.key === ' ' && focusedAssetIndex >= 0) {
+                // Space toggles selection
+                e.preventDefault();
+                const asset = filteredAssets[focusedAssetIndex];
+                if (asset) {
+                    if (selectedAssets.has(asset)) {
+                        selectedAssets.delete(asset);
+                    } else {
+                        selectedAssets.add(asset);
+                    }
+                    updateAssetFocus();
+                    updateSelectedCount();
+                }
+            } else if (e.key === 'Enter' && !e.metaKey && !e.ctrlKey) {
+                e.preventDefault();
+                if (selectedAssets.size > 0) {
+                    // Add all selected
+                    addSelectedAssets();
+                } else if (focusedAssetIndex >= 0 && filteredAssets[focusedAssetIndex]) {
+                    // Add the focused item
+                    selectedAssets.add(filteredAssets[focusedAssetIndex]);
+                    addSelectedAssets();
+                }
+            }
+        }
+
+        function updateAssetFocus() {
+            const grid = document.getElementById('assetGrid');
+            const items = grid.querySelectorAll('.asset-item');
+
+            items.forEach((item, index) => {
+                item.classList.remove('focused');
+                if (index === focusedAssetIndex) {
+                    item.classList.add('focused');
+                    // Update selection state
+                    const asset = filteredAssets[index];
+                    if (selectedAssets.has(asset)) {
+                        item.classList.add('selected');
+                    } else {
+                        item.classList.remove('selected');
+                    }
+                    // Scroll into view if needed
+                    item.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+                }
+            });
         }
 
         function filterAssets(query) {
@@ -1313,6 +1410,7 @@
                     return lowerAsset.includes(searchTerm) || filename.includes(searchTerm);
                 });
             }
+            focusedAssetIndex = -1; // Reset focus to search input
             renderAssetPickerFiltered();
         }
 
