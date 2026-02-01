@@ -427,8 +427,8 @@
 
         <div>
             <h2>Add Elements</h2>
-            <button class="btn btn-secondary element-btn" onclick="showAssetPicker()">
-                <span>🖼</span> Image
+            <button class="btn btn-secondary element-btn" onclick="showAssetPicker()" title="⌘G">
+                <span>🖼</span> Image (⌘G)
             </button>
             <button class="btn btn-secondary element-btn" onclick="addShape('rect')">
                 <span>▢</span> Rectangle
@@ -498,8 +498,10 @@
     <div id="assetModal" class="modal">
         <div class="modal-content">
             <h3>Select Images</h3>
-            <p style="margin-bottom: 15px; color: #888;">Click to select multiple images, then click "Add Selected"</p>
-            <div class="asset-grid" id="assetGrid"></div>
+            <input type="text" id="assetSearch" placeholder="Search images..."
+                   style="width: 100%; margin-bottom: 15px; padding: 10px; border-radius: 6px; border: 1px solid #2d3a5a; background: #1a1a2e; color: #fff;"
+                   oninput="filterAssets(this.value)">
+            <div class="asset-grid" id="assetGrid" style="max-height: 400px; overflow-y: auto;"></div>
             <div style="margin-top: 20px; display: flex; gap: 10px; align-items: center;">
                 <button class="btn btn-primary" id="addSelectedBtn" onclick="addSelectedAssets()" disabled>
                     Add Selected (<span id="selectedCount">0</span>)
@@ -707,11 +709,16 @@
                 return;
             }
 
-            assets.forEach(asset => {
+            // Initialize filtered list if empty
+            if (filteredAssets.length === 0) {
+                filteredAssets = [...assets];
+            }
+
+            filteredAssets.forEach(asset => {
                 const item = document.createElement('div');
                 item.className = 'asset-item' + (selectedAssets.has(asset) ? ' selected' : '');
                 item.innerHTML = `
-                    <img src="/assets/${asset}" alt="${asset}">
+                    <img src="/assets/${asset}" alt="${asset}" title="${asset}">
                     <span class="checkmark">✓</span>
                 `;
                 item.onclick = () => toggleAssetSelection(asset, item);
@@ -1088,6 +1095,22 @@
                 return;
             }
 
+            if (cmdKey && !e.shiftKey && e.key.toLowerCase() === 'g') {
+                e.preventDefault();
+                showAssetPicker();
+                return;
+            }
+
+            // Close modal with Escape
+            if (e.key === 'Escape') {
+                const modal = document.getElementById('assetModal');
+                if (modal.classList.contains('active')) {
+                    e.preventDefault();
+                    closeAssetPicker();
+                    return;
+                }
+            }
+
             // Element-specific shortcuts
             if (!selectedElement) return;
 
@@ -1260,15 +1283,60 @@
         }
 
         // Asset picker
+        let filteredAssets = [];
+
         function showAssetPicker() {
             selectedAssets.clear();
+            filteredAssets = [...assets]; // Reset to show all assets
+            document.getElementById('assetSearch').value = ''; // Clear search
             renderAssetPicker();
             document.getElementById('assetModal').classList.add('active');
+            // Focus search input for immediate typing
+            setTimeout(() => document.getElementById('assetSearch').focus(), 100);
         }
 
         function closeAssetPicker() {
             document.getElementById('assetModal').classList.remove('active');
             selectedAssets.clear();
+            filteredAssets = [];
+        }
+
+        function filterAssets(query) {
+            const searchTerm = query.toLowerCase().trim();
+            if (!searchTerm) {
+                filteredAssets = [...assets];
+            } else {
+                filteredAssets = assets.filter(asset => {
+                    // Search in the full path and also just the filename
+                    const lowerAsset = asset.toLowerCase();
+                    const filename = asset.split('/').pop().toLowerCase();
+                    return lowerAsset.includes(searchTerm) || filename.includes(searchTerm);
+                });
+            }
+            renderAssetPickerFiltered();
+        }
+
+        function renderAssetPickerFiltered() {
+            const grid = document.getElementById('assetGrid');
+            grid.innerHTML = '';
+
+            if (filteredAssets.length === 0) {
+                grid.innerHTML = '<div class="asset-item"><div class="placeholder">No matching images found</div></div>';
+                return;
+            }
+
+            filteredAssets.forEach(asset => {
+                const item = document.createElement('div');
+                item.className = 'asset-item' + (selectedAssets.has(asset) ? ' selected' : '');
+                item.innerHTML = `
+                    <img src="/assets/${asset}" alt="${asset}" title="${asset}">
+                    <span class="checkmark">✓</span>
+                `;
+                item.onclick = () => toggleAssetSelection(asset, item);
+                grid.appendChild(item);
+            });
+
+            updateSelectedCount();
         }
 
         // Canvas settings
