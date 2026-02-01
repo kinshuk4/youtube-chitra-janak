@@ -437,7 +437,7 @@
             <button class="btn btn-primary" onclick="exportThumbnail()" title="⌘⇧E">Export PNG</button>
             <button class="btn btn-secondary" onclick="exportTemplate()" title="⌘E">Export JSON</button>
             <button class="btn btn-secondary" onclick="importTemplate()" title="⌘I">Import JSON</button>
-            <button class="btn btn-secondary" onclick="clearCanvas()">Clear All</button>
+            <button class="btn btn-secondary" onclick="clearCanvas()" title="⌘⇧⌫">Clear All</button>
             <span style="color: #666; font-size: 12px; margin-left: 10px;">⌘S to save template</span>
         </div>
 
@@ -865,6 +865,12 @@
                 } else {
                     nameInput.focus();
                 }
+                return;
+            }
+
+            if (cmdKey && e.shiftKey && e.key === 'Backspace') {
+                e.preventDefault();
+                clearCanvas();
                 return;
             }
 
