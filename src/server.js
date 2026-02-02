@@ -4,21 +4,22 @@
 
 import express from 'express';
 import { fileURLToPath } from 'node:url';
-import { dirname, join, extname } from 'node:path';
-import { readdir, stat, readFile } from 'node:fs/promises';
+import { dirname, join, extname, resolve } from 'node:path';
+import { readdir, readFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
-import { generateThumbnail } from './generator.js';
+import { generateThumbnail, setAssetsDir } from './generator.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const ROOT_DIR = join(__dirname, '..');
-const ASSETS_DIR = join(ROOT_DIR, 'assets');
+const DEFAULT_ASSETS_DIR = join(ROOT_DIR, 'assets');
 const EDITOR_DIR = join(ROOT_DIR, 'editor');
 
 /**
  * Recursively find all image assets
  */
-async function getAllAssets(dir = ASSETS_DIR, basePath = '') {
+async function getAllAssets(assetsDir, dir = null, basePath = '') {
+  dir = dir || assetsDir;
   const assets = [];
   const extensions = new Set(['.png', '.jpg', '.jpeg', '.svg', '.webp', '.gif']);
 
@@ -30,7 +31,7 @@ async function getAllAssets(dir = ASSETS_DIR, basePath = '') {
       const relativePath = basePath ? `${basePath}/${entry.name}` : entry.name;
 
       if (entry.isDirectory()) {
-        const subAssets = await getAllAssets(fullPath, relativePath);
+        const subAssets = await getAllAssets(assetsDir, fullPath, relativePath);
         assets.push(...subAssets);
       } else if (extensions.has(extname(entry.name).toLowerCase())) {
         assets.push(relativePath);
@@ -46,24 +47,35 @@ async function getAllAssets(dir = ASSETS_DIR, basePath = '') {
 /**
  * Start the Express server
  */
-export async function startServer(port = 8080) {
+export async function startServer(port = 8080, options = {}) {
   const app = express();
+
+  // Resolve assets directory
+  let assetsDir = DEFAULT_ASSETS_DIR;
+  if (options.assetsDir) {
+    assetsDir = resolve(options.assetsDir);
+  }
+
+  // Update generator's assets directory
+  setAssetsDir(assetsDir);
+
+  console.log(`Assets directory: ${assetsDir}`);
 
   // Middleware
   app.use(express.json({ limit: '50mb' }));
 
   // Serve editor static files
-  app.get('/', (req, res) => {
+  app.get('/', (_req, res) => {
     res.sendFile(join(EDITOR_DIR, 'index.html'));
   });
 
   // Serve assets
-  app.use('/assets', express.static(ASSETS_DIR));
+  app.use('/assets', express.static(assetsDir));
 
   // API: List all assets
-  app.get('/api/assets', async (req, res) => {
+  app.get('/api/assets', async (_req, res) => {
     try {
-      const assets = await getAllAssets();
+      const assets = await getAllAssets(assetsDir);
       res.json(assets);
     } catch (error) {
       res.status(500).json({ error: error.message });

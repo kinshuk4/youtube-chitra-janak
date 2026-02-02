@@ -4,16 +4,25 @@
 
 import { chromium } from 'playwright';
 import { fileURLToPath } from 'node:url';
-import { dirname, join, basename } from 'node:path';
+import { dirname, join, basename, resolve } from 'node:path';
 import { readFile, writeFile, mkdir } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const ROOT_DIR = join(__dirname, '..');
-const ASSETS_DIR = join(ROOT_DIR, 'assets');
 const TEMPLATES_DIR = join(ROOT_DIR, 'templates');
 const OUT_DIR = join(ROOT_DIR, 'out');
+
+// Mutable assets directory (can be changed via setAssetsDir)
+let ASSETS_DIR = join(ROOT_DIR, 'assets');
+
+/**
+ * Set custom assets directory
+ */
+export function setAssetsDir(dir) {
+  ASSETS_DIR = resolve(dir);
+}
 
 /**
  * Find an asset by name or path
@@ -235,7 +244,13 @@ export async function generateThumbnail(templateData) {
 /**
  * Generate thumbnail from a template file
  */
-export async function generateFromTemplate(templatePath, outputPath) {
+export async function generateFromTemplate(templatePath, outputPath, options = {}) {
+  // Set custom assets directory if provided
+  if (options.assetsDir) {
+    setAssetsDir(options.assetsDir);
+    console.log(`Assets directory: ${ASSETS_DIR}`);
+  }
+
   // Resolve template path
   let fullTemplatePath = templatePath;
 
