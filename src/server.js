@@ -69,6 +69,10 @@ export async function startServer(port = 8080, options = {}) {
     res.sendFile(join(EDITOR_DIR, 'index.html'));
   });
 
+  app.get('/favicon.svg', (_req, res) => {
+    res.sendFile(join(EDITOR_DIR, 'favicon.svg'));
+  });
+
   // Serve assets
   app.use('/assets', express.static(assetsDir));
 
