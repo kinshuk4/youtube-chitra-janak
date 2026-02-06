@@ -1462,7 +1462,7 @@
             updateLayers();
         }
 
-        // Templates
+        // Templates - store only filename for images (resolved at load time)
         function getTemplateData() {
             return {
                 canvas: {
@@ -1472,11 +1472,13 @@
                 },
                 elements: elements.map(el => {
                     const copy = { ...el };
-                    // For images, keep asset path but remove data URLs
-                    if (el.type === 'image' && el.assetPath) {
-                        copy.src = el.assetPath;
-                    }
                     delete copy.id;
+                    // For asset images, store just the filename
+                    if (el.type === 'image' && el.assetPath) {
+                        const filename = el.assetPath.split('/').pop();
+                        copy.assetPath = filename;
+                        delete copy.src;
+                    }
                     return copy;
                 })
             };
@@ -1553,24 +1555,41 @@
                 resizeCanvas();
                 updateCanvasBg();
 
-                template.elements.forEach(el => {
+                for (const el of template.elements) {
                     const id = `element-${++elementCounter}`;
                     const element = { ...el, id };
 
-                    // Resolve asset path to URL
-                    if (element.type === 'image' && element.assetPath) {
-                        element.src = `/assets/${element.assetPath}`;
-                    } else if (element.type === 'image' && element.src && !element.src.startsWith('data:') && !element.src.startsWith('/')) {
-                        element.src = `/assets/${element.src}`;
+                    if (element.type === 'image') {
+                        element.src = resolveAssetSrc(element);
                     }
 
                     elements.push(element);
                     renderElement(element);
-                });
+                }
                 updateLayers();
             } catch (e) {
                 alert('Error loading template: ' + e.message);
             }
+        }
+
+        // Resolve image src: use filename lookup via /api/resolve-asset/
+        function resolveAssetSrc(element) {
+            const name = element.assetPath || element.fileName;
+            if (name) {
+                // Extract just the filename if it's a path
+                const filename = name.split('/').pop();
+                return `/api/resolve-asset/${encodeURIComponent(filename)}`;
+            }
+            // Data URLs or already-resolved URLs
+            if (element.src && (element.src.startsWith('data:') || element.src.startsWith('/'))) {
+                return element.src;
+            }
+            // Legacy: bare relative path in src
+            if (element.src) {
+                const filename = element.src.split('/').pop();
+                return `/api/resolve-asset/${encodeURIComponent(filename)}`;
+            }
+            return '';
         }
 
         function clearCanvasQuiet() {
@@ -1625,8 +1644,8 @@
                         template.elements.forEach(el => {
                             const id = `element-${++elementCounter}`;
                             const element = { ...el, id };
-                            if (element.type === 'image' && element.assetPath) {
-                                element.src = `/assets/${element.assetPath}`;
+                            if (element.type === 'image') {
+                                element.src = resolveAssetSrc(element);
                             }
                             elements.push(element);
                             renderElement(element);

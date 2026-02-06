@@ -5,7 +5,7 @@
 import { chromium } from 'playwright';
 import { fileURLToPath } from 'node:url';
 import { dirname, join, basename, resolve } from 'node:path';
-import { readFile, writeFile, mkdir } from 'node:fs/promises';
+import { readFile, readdir, writeFile, mkdir } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -16,6 +16,7 @@ const OUT_DIR = join(ROOT_DIR, 'out');
 
 // Mutable assets directory (can be changed via setAssetsDir)
 let ASSETS_DIR = join(ROOT_DIR, 'assets');
+const DEFAULT_ASSETS_DIR = join(ROOT_DIR, 'assets');
 
 /**
  * Set custom assets directory
@@ -25,60 +26,58 @@ export function setAssetsDir(dir) {
 }
 
 /**
- * Find an asset by name or path
+ * Search a directory recursively for a file by name
+ */
+async function searchDir(dir, fileName) {
+  try {
+    const entries = await readdir(dir, { withFileTypes: true });
+    for (const entry of entries) {
+      const fullPath = join(dir, entry.name);
+      if (entry.isDirectory()) {
+        const found = await searchDir(fullPath, fileName);
+        if (found) return found;
+      } else if (entry.name === fileName) {
+        return fullPath;
+      }
+    }
+  } catch (_e) {
+    // Directory doesn't exist
+  }
+  return null;
+}
+
+/**
+ * Find an asset by name or path, searching all asset directories
  */
 async function findAsset(name) {
-  // If it's a path, use directly
+  // Extract just the filename for searching
+  const fileName = name.includes('/') ? name.split('/').pop() : name;
+
+  // Build list of dirs to search
+  const dirs = [ASSETS_DIR];
+  if (ASSETS_DIR !== DEFAULT_ASSETS_DIR) dirs.push(DEFAULT_ASSETS_DIR);
+
+  // Try exact relative path first in each dir
   if (name.includes('/')) {
-    const fullPath = join(ASSETS_DIR, name);
-    return existsSync(fullPath) ? fullPath : null;
-  }
-
-  // Search recursively
-  async function searchDir(dir) {
-    const { readdir } = await import('node:fs/promises');
-    try {
-      const entries = await readdir(dir, { withFileTypes: true });
-      for (const entry of entries) {
-        const fullPath = join(dir, entry.name);
-        if (entry.isDirectory()) {
-          const found = await searchDir(fullPath);
-          if (found) return found;
-        } else if (entry.name === name) {
-          return fullPath;
-        }
-      }
-    } catch (e) {
-      // Directory doesn't exist
+    for (const dir of dirs) {
+      const fullPath = join(dir, name);
+      if (existsSync(fullPath)) return fullPath;
     }
-    return null;
   }
 
-  // Try exact match first
-  let found = await searchDir(ASSETS_DIR);
-  if (found) return found;
+  // Search recursively by filename
+  for (const dir of dirs) {
+    const found = await searchDir(dir, fileName);
+    if (found) return found;
+  }
 
   // Try with common extensions if no extension provided
-  if (!name.includes('.')) {
+  if (!fileName.includes('.')) {
     for (const ext of ['.png', '.jpg', '.jpeg', '.svg', '.webp']) {
-      const nameWithExt = name + ext;
-      async function searchWithExt(dir) {
-        try {
-          const entries = await readdir(dir, { withFileTypes: true });
-          for (const entry of entries) {
-            const fullPath = join(dir, entry.name);
-            if (entry.isDirectory()) {
-              const found = await searchWithExt(fullPath);
-              if (found) return found;
-            } else if (entry.name === nameWithExt) {
-              return fullPath;
-            }
-          }
-        } catch (e) {}
-        return null;
+      for (const dir of dirs) {
+        const found = await searchDir(dir, fileName + ext);
+        if (found) return found;
       }
-      found = await searchWithExt(ASSETS_DIR);
-      if (found) return found;
     }
   }
 
@@ -120,32 +119,22 @@ async function fileToDataURL(filePath) {
  * Resolve image source to a data URL or keep as-is if already data URL
  */
 async function resolveImageSrc(el) {
-  let src = el.src || '';
+  const src = el.src || '';
 
   // Already a data URL - keep as is
   if (src.startsWith('data:')) {
     return src;
   }
 
-  // Determine the file path
-  let filePath = null;
+  // Use assetPath or extract name from src
+  const name = el.assetPath || src.replace(/^\/assets\//, '').replace(/^file:\/\//, '');
+  const filePath = await findAsset(name);
 
-  if (el.assetPath) {
-    filePath = join(ASSETS_DIR, el.assetPath);
-  } else if (src.startsWith('/assets/')) {
-    const relativePath = src.replace('/assets/', '');
-    filePath = join(ASSETS_DIR, relativePath);
-  } else if (src.startsWith('file://')) {
-    filePath = src.replace('file://', '');
-  } else if (src) {
-    filePath = join(ASSETS_DIR, src);
-  }
-
-  if (filePath && existsSync(filePath)) {
+  if (filePath) {
     return await fileToDataURL(filePath);
   }
 
-  console.warn(`  Warning: Asset not found: ${el.assetPath || src}`);
+  console.warn(`  Warning: Asset not found: ${name}`);
   return null;
 }
 

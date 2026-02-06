@@ -73,14 +73,62 @@ export async function startServer(port = 8080, options = {}) {
     res.sendFile(join(EDITOR_DIR, 'favicon.svg'));
   });
 
-  // Serve assets
+  // Serve assets (custom dir first, default as fallback for old templates)
   app.use('/assets', express.static(assetsDir));
+  if (assetsDir !== DEFAULT_ASSETS_DIR) {
+    app.use('/assets', express.static(DEFAULT_ASSETS_DIR));
+  }
 
-  // API: List all assets
+  // API: List all assets (merge custom + default dirs, deduplicated)
   app.get('/api/assets', async (_req, res) => {
     try {
       const assets = await getAllAssets(assetsDir);
+      if (assetsDir !== DEFAULT_ASSETS_DIR) {
+        const defaultAssets = await getAllAssets(DEFAULT_ASSETS_DIR);
+        const merged = [...new Set([...assets, ...defaultAssets])].sort();
+        return res.json(merged);
+      }
       res.json(assets);
+    } catch (error) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // API: Resolve asset by filename (searches all asset dirs recursively)
+  const allAssetDirs = [assetsDir];
+  if (assetsDir !== DEFAULT_ASSETS_DIR) allAssetDirs.push(DEFAULT_ASSETS_DIR);
+
+  async function findAssetByName(name, dirs) {
+    for (const baseDir of dirs) {
+      const found = await searchDirForFile(baseDir, name);
+      if (found) return found;
+    }
+    return null;
+  }
+
+  async function searchDirForFile(dir, name) {
+    try {
+      const entries = await readdir(dir, { withFileTypes: true });
+      for (const entry of entries) {
+        const fullPath = join(dir, entry.name);
+        if (entry.isDirectory()) {
+          const found = await searchDirForFile(fullPath, name);
+          if (found) return found;
+        } else if (entry.name === name) {
+          return fullPath;
+        }
+      }
+    } catch (_e) { /* skip */ }
+    return null;
+  }
+
+  app.get('/api/resolve-asset/:name', async (req, res) => {
+    try {
+      const filePath = await findAssetByName(req.params.name, allAssetDirs);
+      if (filePath) {
+        return res.sendFile(filePath);
+      }
+      res.status(404).json({ error: 'Asset not found' });
     } catch (error) {
       res.status(500).json({ error: error.message });
     }
